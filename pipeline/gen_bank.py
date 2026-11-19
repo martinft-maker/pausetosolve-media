@@ -132,7 +132,7 @@ def build(start=1, count=100):
         p["id"] = f"{start + n:03d}"; p["hook"] = HOOK[s][i % len(HOOK[s])]
         p["caption"] = (f"{p.pop('cap_q')} 🧠\n\nComment your answer before the timer runs out 👇\n"
                         f"New puzzle every day – follow @pausetosolve\n\n#brainteaser #puzzle {TAG[s]} #pausetosolve")
-        p["title"] = f"{p['hook'].capitalize()} 🧠"
+        p["title"] = p["hook"].capitalize().replace("Iq ", "IQ ").replace("iq ", "IQ ") + " 🧠"
         out.append(p)
     return out
 
