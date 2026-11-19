@@ -130,7 +130,11 @@ class Brass(Theme):
         self.tex = to_img(brass_tex(560, 560, 12)); self.cop = to_img(copper_tex(560, 560, 21))
         self.gears = [(40, 120, 230, 14, self.tex, 0.25), (1080, 330, 170, 11, self.cop, -0.35),
                       (30, 1830, 260, 16, self.cop, 0.2), (1040, 1700, 150, 10, self.tex, -0.4)]
-        self.sprites = [gear_sprite(R, n, tx) for (_, _, R, n, tx, _) in self.gears]
+        self.sprites = []
+        for (_, _, R, n, tx, _) in self.gears:
+            spr, m = gear_sprite(R, n, tx); pad = 30
+            sh = Image.new("L", (m.width + 2 * pad, m.height + 2 * pad), 0); sh.paste(m, (pad, pad))
+            self.sprites.append((spr, sh.filter(ImageFilter.GaussianBlur(10)).point(lambda v: v * 0.6), pad))
     def background(self):
         img = to_img(brass_tex(H, W, 11, dark=True) * vignette(H, W, 0.75, 2.0)[..., None])
         # kortskygge + pergament-ramme bakes inn
@@ -155,11 +159,11 @@ class Brass(Theme):
         ft = lora(22, 600); ctext(d, gx, gy + 104, "PRESSURE", ft, (110, 80, 50))
         return img
     def animate(self, img, t):
-        for (x, y, R, n, tx, sp), (spr, m) in zip(self.gears, self.sprites):
+        for (x, y, R, n, tx, sp), (spr, sh, pad) in zip(self.gears, self.sprites):
             ang = math.degrees(t * sp) % 360
-            s2, m2 = spr.rotate(ang, resample=Image.BILINEAR), m.rotate(ang, resample=Image.BILINEAR)
+            s2, sh2 = spr.rotate(ang, resample=Image.BILINEAR), sh.rotate(ang, resample=Image.BILINEAR)
             ox, oy = int(x - spr.width / 2), int(y - spr.height / 2)
-            img.paste(Image.new("RGB", m2.size, (0, 0, 0)), (ox + 10, oy + 16), m2.filter(ImageFilter.BoxBlur(8)).point(lambda v: v * 0.6))
+            img.paste((0, 0, 0), (ox + 10 - pad, oy + 16 - pad, ox + 10 - pad + sh2.width, oy + 16 - pad + sh2.height), sh2)
             img.paste(s2, (ox, oy), s2)
     def hook(self, img, text):
         f = lora(64, 700); d = ImageDraw.Draw(img); pw = int(min(1000, d.textlength(text, font=f) + 150)); ph = 128
