@@ -93,7 +93,25 @@ RIDDLES = [("What has keys but can't open a single lock?", "A piano 🎹"), ("Wh
            ("What has lots of teeth but can't bite?", "A comb"), ("What can travel around the world while staying in a corner?", "A stamp 📮"),
            ("What has words but never speaks?", "A book 📖"),
            ("A rooster lays an egg on a roof. Which way does the egg roll?", "Roosters don't lay eggs 🐓"),
-           ("A bat and a ball cost $1.10. The bat costs $1.00 more than the ball. How much is the ball?", "5 cents (not 10!)")]
+           ("A bat and a ball cost $1.10. The bat costs $1.00 more than the ball. How much is the ball?", "5 cents (not 10!)"),
+           # --- runde 2 ---
+           ("What can fill a room but takes up no space?", "Light 💡"), ("What has a head and a tail but no body?", "A coin 🪙"),
+           ("What can run but never walks, and has a bed but never sleeps?", "A river 🌊"), ("What has legs but can't walk?", "A table"),
+           ("What can you break without ever touching it?", "A promise"), ("What goes through cities and fields but never moves?", "A road 🛣️"),
+           ("What has a thumb and four fingers but isn't alive?", "A glove 🧤"), ("What is full of holes but still holds water?", "A sponge 🧽"),
+           ("What comes once in a minute, twice in a moment, but never in a thousand years?", "The letter M"),
+           ("What gets bigger the more you take away from it?", "A hole 🕳️"), ("What has to be broken before you can use it?", "An egg 🥚"),
+           ("Which building has the most stories?", "A library 📚"), ("What can you hold in your right hand but never in your left?", "Your left hand ✋"),
+           ("Forward I'm heavy, backward I'm not. What am I?", "A ton (backwards: not)"), ("What kind of room has no doors or windows?", "A mushroom 🍄"),
+           ("What starts with T, ends with T, and has T in it?", "A teapot 🫖"), ("What word is spelled wrong in every dictionary?", "\"Wrong\""),
+           ("Mary's father has five daughters: Nana, Nene, Nini, Nono. What's the fifth daughter's name?", "Mary 👧"),
+           ("You pass the person in 2nd place in a race. What place are you in now?", "2nd place 🥈"),
+           ("What has cities but no houses, forests but no trees, and water but no fish?", "A map 🗺️"),
+           ("I shave every day, but my beard stays the same. Who am I?", "A barber 💈"), ("What has one head, one foot and four legs?", "A bed 🛏️"),
+           ("What is always in front of you but can't be seen?", "The future"),
+           ("What weighs more: a kilo of feathers or a kilo of bricks?", "Neither – both weigh a kilo"),
+           ("A farmer has 17 sheep. All but 9 run away. How many are left?", "9 🐑"),
+           ("There are 3 apples and you take away 2. How many do you have?", "2 🍎")]
 def gen_D(i):
     q, a = RIDDLES[i]
     return dict(series="D", question=q, answer=a, prompt="Can you answer this riddle?", explain_top="The answer is…", verdict="Did you get it?",
@@ -108,7 +126,12 @@ ILL = [dict(kind="muller", flip=False, prompt="Which line is longer: A or B?", a
        dict(kind="contrast", flip=True, gray=140, prompt="Which square is lighter: A or B?", answer="Same color!"),
        dict(kind="ponzo", color=[60, 220, 200], prompt="Which bar is longer: A or B?", answer="Same length!")]
 def gen_E(i):
-    e = dict(ILL[i]); e.update(series="E", explain_top="Your brain just got tricked 🤯", verdict=e["answer"], cap_q=e["prompt"])
+    e = dict(ILL[i % len(ILL)])
+    if i >= len(ILL):   # ny runde: ny farge og speilvending så det ikke blir likt
+        e["flip"] = not e.get("flip", False); e["color"] = R.choice([[255, 140, 40], [255, 90, 140], [60, 220, 200], [170, 120, 255]])
+        if e["kind"] == "contrast": e["gray"] = R.choice([118, 128, 138, 148])
+        e["prompt"] = e["prompt"].replace("orange", "colored").replace("pink", "colored")
+    e.update(series="E", explain_top="Your brain just got tricked 🤯", verdict=e["answer"], cap_q=e["prompt"])
     return e
 
 def gen_F():
@@ -118,15 +141,17 @@ def gen_F():
     return dict(series="F", grid=grid, cols=4, target=target, answer=n, prompt=f"How many {target} did you see?",
                 explain_top=f"There were {n} {target}", verdict=f"Answer: {n}", cap_q=f"How many {target} were in the grid?")
 
-def build(start=1, count=100):
+def build(start=1, count=100, used=None):
+    """used: tellere per serie fra eksisterende bank (for --append)."""
     plan = ["A"] * 25 + ["B"] * 20 + ["C"] * 20 + ["D"] * 15 + ["E"] * 8 + ["F"] * 12
     # flett: aldri samme serie to ganger på rad
     order, pool = [], plan[:]
     while pool:
         opts = [s for s in sorted(set(pool)) if not order or s != order[-1]] or list(set(pool))
         weights = [pool.count(s) for s in opts]; s = R.choices(opts, weights)[0]; order.append(s); pool.remove(s)
-    cnt = {k: 0 for k in "ABCDEF"}; out = []
+    cnt = dict(used or {k: 0 for k in "ABCDEF"}); out = []
     for n, s in enumerate(order[:count]):
+        if s == "D" and cnt["D"] >= len(RIDDLES): s = "A"      # tomt for tekstgåter -> utvid RIDDLES
         i = cnt[s]; cnt[s] += 1
         p = {"A": gen_A, "C": gen_C, "F": gen_F}[s]() if s in "ACF" else {"B": gen_B, "D": gen_D, "E": gen_E}[s](i)
         p["id"] = f"{start + n:03d}"; p["hook"] = HOOK[s][i % len(HOOK[s])]
@@ -136,6 +161,17 @@ def build(start=1, count=100):
         out.append(p)
     return out
 
+if __name__ == "__main__" and sys.argv[1] == "--append":
+    # gen_bank.py --append puzzles.jsonl ANTALL SEED  -> legger til nye gåter med neste ledige id
+    bank, n = sys.argv[2], int(sys.argv[3]); R.seed(int(sys.argv[4]) if len(sys.argv) > 4 else 7)
+    old = [json.loads(l) for l in open(bank, encoding="utf-8") if l.strip()]
+    used = {k: sum(1 for p in old if p["series"] == k) for k in "ABCDEF"}
+    ps = build(int(old[-1]["id"]) + 1, n, used)
+    with open(bank, "a", encoding="utf-8") as f:
+        for p in ps: f.write(json.dumps(p, ensure_ascii=False) + "\n")
+    from collections import Counter; print(len(ps), ps[0]["id"], "-", ps[-1]["id"], Counter(p["series"] for p in ps))
+    if used["D"] + Counter(p["series"] for p in ps)["D"] >= len(RIDDLES): print("ADVARSEL: tom for tekstgåter – legg nye i RIDDLES")
+    sys.exit(0)
 if __name__ == "__main__":
     start = int(sys.argv[2]) if len(sys.argv) > 2 else 1; count = int(sys.argv[3]) if len(sys.argv) > 3 else 100
     ps = build(start, count)
