@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""@pausetosolve – hjernetrim-reels. Design A «Arcade» (marine + neongul).
+"""@pausetosolve – hjernetrim-reels. Tre tema (pts_theme.py) i blokker på 5: brass, desk, nixie.
 Én gåte = én linje i pipeline/puzzles.jsonl. Serier:
   A emoji-likning · B finn den som skiller seg ut · C tallrekke · D gåte i tekst · E synsbedrag · F hukommelse
 Bruk: pts_reel.py BANK.jsonl ID [ID ...] OUTDIR      (lager OUTDIR/pausetosolve_NNN.mp4)
@@ -7,6 +7,8 @@ Bruk: pts_reel.py BANK.jsonl ID [ID ...] OUTDIR      (lager OUTDIR/pausetosolve_
 import sys, os, re, json, math, subprocess, tempfile, wave
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pts_theme
 
 HANDLE = "pausetosolve"
 W, H, FPS = 1080, 1920, 30
@@ -14,10 +16,17 @@ NAVY, GRIDC, CARD, CARDLINE = (11, 16, 38), (18, 25, 54), (20, 28, 64), (46, 60,
 YEL, WHITE, MUTED, OPC, GREEN, RED = (255, 222, 0), (255, 255, 255), (160, 172, 220), (120, 136, 200), (60, 220, 120), (255, 80, 90)
 INTER = "/usr/share/fonts/opentype/inter/Inter-%s.otf"
 EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
-CX0, CY0, CW, CH = 70, 500, 940, 680          # kortet
-RING_Y = 1370
+CX0, CY0, CW, CH = pts_theme.CX0, pts_theme.CY0, pts_theme.CW, pts_theme.CH
+RING_Y = pts_theme.TIMER_Y
+T = None   # aktivt tema
+def set_theme(name):
+    global T, WHITE, OPC, YEL, GREEN, MUTED
+    T = pts_theme.make(name); WHITE, OPC, YEL, GREEN, MUTED = T.fg, T.op, T.q, T.ans, T.muted
+    return T
 _f = {}
 def F(w, s):
+    if T is not None:
+        return T.font(s) if w in ("Black", "Bold") else T.font_text(s)
     if (w, s) not in _f: _f[(w, s)] = ImageFont.truetype(INTER % w, s)
     return _f[(w, s)]
 
@@ -79,9 +88,7 @@ def background():
     return img
 
 def new_card():
-    c = Image.new("RGBA", (CW, CH), (0, 0, 0, 0)); d = ImageDraw.Draw(c)
-    d.rounded_rectangle((0, 0, CW - 1, CH - 1), 46, fill=CARD + (255,), outline=CARDLINE + (255,), width=4)
-    return c, d
+    c = T.card_base(); return c, ImageDraw.Draw(c)
 
 # ---------- serie A: emoji-likning ----------
 def card_A(p, reveal):
@@ -180,7 +187,7 @@ def card_E(p, reveal):
             n = 6 if nb > 40 else 8
             for i in range(n):
                 a = 2 * math.pi * i / n; x, y = cxp + ring_r * math.cos(a), cy + ring_r * math.sin(a)
-                d.ellipse((x - nb, y - nb, x + nb, y + nb), fill=(120, 136, 200))
+                d.ellipse((x - nb, y - nb, x + nb, y + nb), fill=T.nb)
             d.ellipse((cxp - r, cy - r, cxp + r, cy + r), fill=col)
             d.text((cxp - 20, CH - 95), name, font=lab, fill=YEL)
         if reveal:
@@ -213,7 +220,7 @@ def card_E(p, reveal):
                 for yy in range(ya - 30, yb + 30, 30): d.line((xe, yy, xe, yy + 16), fill=GREEN, width=6)
     if reveal:
         f = F("Black", 54); t = p["answer"]
-        d.rounded_rectangle((CW / 2 - d.textlength(t, font=f) / 2 - 30, CH / 2 - 50, CW / 2 + d.textlength(t, font=f) / 2 + 30, CH / 2 + 30), 30, fill=(10, 14, 32, 235))
+        d.rounded_rectangle((CW / 2 - d.textlength(t, font=f) / 2 - 30, CH / 2 - 50, CW / 2 + d.textlength(t, font=f) / 2 + 30, CH / 2 + 30), 30, fill=((10, 14, 18, 235) if T.name == "nixie" else (252, 248, 236, 240)))
         d.text((CW / 2 - d.textlength(t, font=f) / 2, CH / 2 - 42), t, font=f, fill=GREEN)
     return c
 
@@ -226,9 +233,9 @@ def card_F(p, phase):
     qf = F("Black", int(cell * 0.55))
     for i, ch in enumerate(g):
         r, k = divmod(i, C); x, y = ox + k * cell, oy + r * cell
-        d.rounded_rectangle((x + 8, y + 8, x + cell - 8, y + cell - 8), 22, fill=(30, 40, 86, 255))
+        d.rounded_rectangle((x + 8, y + 8, x + cell - 8, y + cell - 8), 22, fill=T.tile + (255,))
         if phase == "hide":
-            d.text((x + cell / 2 - d.textlength("?", font=qf) / 2, y + cell / 2 - qf.size * 0.62), "?", font=qf, fill=OPC)
+            d.text((x + cell / 2 - d.textlength("?", font=qf) / 2, y + cell / 2 - qf.size * 0.62), "?", font=qf, fill=T.tile_q)
             continue
         e = emoji(ch, size)
         if phase == "reveal" and ch != p["target"]:
@@ -254,67 +261,62 @@ def ring(d, cx, cy, r, frac, num, col=YEL):
     f = F("Black", int(r * 1.05)); d.text((cx - d.textlength(num, font=f) / 2, cy - r * 0.68), num, font=f, fill=col)
 
 class Reel:
-    def __init__(self, p):
-        self.p = p; self.tl = timeline(p); self.bg = background()
+    def __init__(self, p, theme=None):
+        set_theme(theme or p.get("theme") or pts_theme.theme_for_id(p["id"]))
+        self.p = p; self.tl = timeline(p); self.bg = T.background()
         s = p["series"]
         if s == "F":
-            self.c_show, self.c_hide, self.c_rev = card_F(p, "show"), card_F(p, "hide"), card_F(p, "reveal")
+            cards = dict(show=card_F(p, "show"), hide=card_F(p, "hide"), rev=card_F(p, "reveal"))
         else:
-            self.c_q, self.c_rev = CARDS[s](p, False), CARDS[s](p, True)
-        # statisk topp
-        top = self.bg.copy(); d = ImageDraw.Draw(top)
-        hf = F("Black", 64); hw = d.textlength(p["hook"], font=hf)
-        pad = 50; d.rounded_rectangle((W / 2 - hw / 2 - pad, 250, W / 2 + hw / 2 + pad, 360), 55, fill=YEL)
-        d.text((W / 2 - hw / 2, 269), p["hook"], font=hf, fill=NAVY)
-        self.top = top
+            cards = dict(q=CARDS[s](p, False), rev=CARDS[s](p, True))
+        self.cards = {k: T.place(v) for k, v in cards.items()}
+        # krok som eget lag (så animert bakgrunn kan ligge under)
+        top = self.bg.copy(); T.hook(top, p["hook"])
+        diff = np.abs(np.asarray(top, np.int16) - np.asarray(self.bg, np.int16)).sum(axis=2)
+        self.hook_layer = top.convert("RGBA"); self.hook_layer.putalpha(Image.fromarray(np.clip(diff * 6, 0, 255).astype(np.uint8)))
+        self.animated = T.name == "brass"
+        self.static = None if self.animated else Image.alpha_composite(self.bg.convert("RGBA"), self.hook_layer).convert("RGB")
 
     def frame(self, t):
         p, tl = self.p, self.tl
-        img = self.top.copy(); d = ImageDraw.Draw(img)
+        if self.animated:
+            img = self.bg.copy(); T.animate(img, t); img.paste(self.hook_layer, (0, 0), self.hook_layer)
+        else:
+            img = self.static.copy()
+        d = ImageDraw.Draw(img)
         # undertittel
-        sf = F("SemiBold", 44)
         if tl["mem"] and t < tl["mem"][1]: sub = "Memorize the grid!"
         elif t >= tl["reveal"]: sub = p.get("explain_top", "Here's the answer")
         else: sub = p["prompt"]
-        sfit, sls = fit_lines(d, sub, "SemiBold", 900, 80, start=46, minsize=32)
-        rich_c(img, d, W / 2, 410 + (80 - sfit.size * 1.22 * len(sls)) / 2 - 10, sls[0], sfit, MUTED if t < tl["reveal"] else WHITE)
+        sfit, sls = fit_lines(d, sub, "SemiBold", 900, 60, start=44, minsize=30)
+        rich_c(img, d, W / 2, 392, sls[0], sfit, T.sub)
         # kort (pop inn, bytt ved avsløring)
         if p["series"] == "F":
-            if t < tl["mem"][1]: card = self.c_show
-            elif t < tl["reveal"]: card = self.c_hide
-            else: card = self.c_rev
+            key = "show" if t < tl["mem"][1] else ("hide" if t < tl["reveal"] else "rev")
             swap = tl["mem"][1] if tl["mem"][1] <= t < tl["mem"][1] + 0.25 else (tl["reveal"] if tl["reveal"] <= t < tl["reveal"] + 0.25 else None)
         else:
-            card = self.c_rev if t >= tl["reveal"] else self.c_q
+            key = "rev" if t >= tl["reveal"] else "q"
             swap = tl["reveal"] if tl["reveal"] <= t < tl["reveal"] + 0.25 else None
+        card, (px, py) = self.cards[key]
         sc = 0.94 + 0.06 * ease(t / 0.35)
         if swap is not None: sc = 0.96 + 0.04 * ease((t - swap) / 0.25)
         if sc < 0.999:
-            cw, ch = int(CW * sc), int(CH * sc); cc = card.resize((cw, ch), Image.BILINEAR)
-            img.paste(cc, (int(CX0 + (CW - cw) / 2), int(CY0 + (CH - ch) / 2)), cc)
+            cw, ch = int(card.width * sc), int(card.height * sc); cc = card.resize((cw, ch), Image.BILINEAR)
+            img.paste(cc, (int(px + (card.width - cw) / 2), int(py + (card.height - ch) / 2)), cc)
         else:
-            img.paste(card, (CX0, CY0), card)
+            img.paste(card, (px, py), card)
+        if T.name == "desk": T.tape(img)
         # nedtelling / status
-        c0, c1 = tl["count"]
-        if tl["mem"] and t < tl["mem"][1]:
-            m0, m1 = tl["mem"]; frac = 1 - (t - m0) / (m1 - m0)
-            d.rounded_rectangle((190, 1300, 890, 1350), 25, fill=(34, 44, 90))
-            d.rounded_rectangle((190, 1300, 190 + 700 * max(frac, 0.02), 1350), 25, fill=YEL)
-            f = F("Black", 60); tt = "MEMORIZE"; d.text((W / 2 - d.textlength(tt, font=f) / 2, 1395), tt, font=f, fill=YEL)
-        elif t < c0:
-            ring(d, W // 2, RING_Y, 120, 1.0, str(int(round(c1 - c0))))
-        elif t < c1:
-            left = c1 - t; ring(d, W // 2, RING_Y, 120, left / (c1 - c0), str(math.ceil(left)), YEL if left > 2 else RED)
-        elif t < tl["reveal"]:
-            f = F("Black", 96); tt = "TIME'S UP!"; d.text((W / 2 - d.textlength(tt, font=f) / 2, RING_Y - 60), tt, font=f, fill=RED)
-        else:
-            k = ease((t - tl["reveal"]) / 0.3); f = F("Black", int(70 + 20 * k)); tt = p.get("verdict", "Did you get it?")
-            rich_c(img, d, W / 2, RING_Y - f.size * 0.6, tt, f, GREEN)
+        c0, c1 = tl["count"]; total = c1 - c0
+        if (tl["mem"] and t < c0) or t < c0: T.timer(img, total, total)
+        elif t < c1: T.timer(img, c1 - t, total)
+        elif t < tl["reveal"]: T.timesup(img, (t - c1) / (tl["reveal"] - c1))
+        else: T.verdict(img, p.get("verdict", "Did you get it?"), (t - tl["reveal"]) / 0.4)
         # bunntekst
-        bf = F("Bold", 50)
+        d = ImageDraw.Draw(img)
         bt = "Comment your answer 👇" if t < tl["reveal"] else "Follow for a daily puzzle 🧠"
         if tl["mem"] and t < tl["mem"][1]: bt = "Then answer the question 👇"
-        rich_c(img, d, W / 2, 1530, bt, bf, WHITE)
+        rich_c(img, d, W / 2, 1665, bt, T.font_text(48), T.bottom)
         return img
 
 # ---------- lyd ----------
@@ -406,6 +408,8 @@ def render(p, out):
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", v, "-i", a, "-map", "0:v", "-map", "1:a", "-c:v", "copy",
                     "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "160k", "-shortest", part], check=True)
     os.replace(part, out)
+
+def theme_of(p): return p.get("theme") or pts_theme.theme_for_id(p["id"])
 
 def load(bank):
     return {json.loads(l)["id"]: json.loads(l) for l in open(bank, encoding="utf-8") if l.strip()}
