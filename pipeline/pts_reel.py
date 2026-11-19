@@ -248,10 +248,15 @@ def card_F(p, phase):
 CARDS = {"A": card_A, "B": card_B, "C": card_C, "D": card_D, "E": card_E}
 
 # ---------- tidslinje ----------
+REVEAL = False   # Martin 19. nov: svaret skal ALDRI vises – folk skal diskutere det i kommentarfeltet
 def timeline(p):
     if p["series"] == "F":
-        return dict(mem=(0.0, 3.6), count=(4.0, 9.0), reveal=9.6, end=14.0)
-    return dict(mem=None, count=(1.0, 6.0), reveal=6.6, end=12.0)
+        tl = dict(mem=(0.0, 3.6), count=(4.0, 9.0), reveal=9.6, end=14.0)
+    else:
+        tl = dict(mem=None, count=(1.0, 6.0), reveal=6.6, end=12.0)
+    if not REVEAL:
+        tl["reveal"] = 1e9; tl["end"] = tl["count"][1] + 2.2
+    return tl
 
 def ease(x): x = max(0, min(1, x)); return 1 - (1 - x) ** 3
 
@@ -310,11 +315,12 @@ class Reel:
         c0, c1 = tl["count"]; total = c1 - c0
         if (tl["mem"] and t < c0) or t < c0: T.timer(img, total, total)
         elif t < c1: T.timer(img, c1 - t, total)
-        elif t < tl["reveal"]: T.timesup(img, (t - c1) / (tl["reveal"] - c1))
+        elif t < tl["reveal"]: T.timesup(img, min(1.0, (t - c1) / 0.6))
         else: T.verdict(img, p.get("verdict", "Did you get it?"), (t - tl["reveal"]) / 0.4)
         # bunntekst
         d = ImageDraw.Draw(img)
         bt = "Comment your answer 👇" if t < tl["reveal"] else "Follow for a daily puzzle 🧠"
+        if not REVEAL and t >= c1: bt = "What's your answer? 👇"
         if tl["mem"] and t < tl["mem"][1]: bt = "Then answer the question 👇"
         rich_c(img, d, W / 2, 1665, bt, T.font_text(48), T.bottom)
         return img
@@ -381,7 +387,7 @@ def soundtrack(p, variant):
     for s in range(int(round(c1 - c0))):
         add(fx, tick(hi=(c1 - c0 - s) <= 3) * 0.55, c0 + s)
     add(fx, buzzer() * 0.5, c1)
-    add(fx, whoosh(rng), tl["reveal"] - 0.12); add(fx, ding() * 0.5, tl["reveal"])
+    if REVEAL: add(fx, whoosh(rng), tl["reveal"] - 0.12); add(fx, ding() * 0.5, tl["reveal"])
     if tl["mem"]:
         add(fx, whoosh(rng) * 0.8, tl["mem"][1] - 0.1)
     mix = music * gain * 0.75 + fx
@@ -415,7 +421,10 @@ def load(bank):
     return {json.loads(l)["id"]: json.loads(l) for l in open(bank, encoding="utf-8") if l.strip()}
 
 if __name__ == "__main__":
-    if sys.argv[1] == "--still":
+    if sys.argv[1] == "--check":   # pts_reel.py --check BANK ID OUT.png  -> svarkortet (vises ikke i videoen)
+        _, _, bank, pid, out = sys.argv
+        globals()["REVEAL"] = True; Reel(load(bank)[pid]).frame(timeline(load(bank)[pid])["reveal"] + 1.0).save(out)
+    elif sys.argv[1] == "--still":
         _, _, bank, pid, out, t = sys.argv
         Reel(load(bank)[pid]).frame(float(t)).save(out)
     else:
