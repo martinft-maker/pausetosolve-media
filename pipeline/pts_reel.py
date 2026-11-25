@@ -247,6 +247,27 @@ def card_F(p, phase):
 
 CARDS = {"A": card_A, "B": card_B, "C": card_C, "D": card_D, "E": card_E}
 
+# ---------- nivå-serien (Martin 25. nov) ----------
+def badges(p):
+    """Øverste rad: rød «LEVEL N»-brikke + «✅ Level N-1 answer: …». None hvis gåten ikke har nivå."""
+    if not p.get("level"): return None
+    lay = Image.new("RGBA", (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(lay)
+    y, h, gap = 108, 70, 16
+    lt = f"LEVEL {p['level']}"; lf = F("Black", 44); lw = d.textlength(lt, font=lf) + 48
+    txt = ("✅ " + p["prev_answer"]) if p.get("prev_answer") else ""
+    af = None; aw = 0
+    for size in (34, 31, 28, 25):
+        af = F("Bold", size); aw = (rich_width(d, txt, af) + 44) if txt else 0
+        if lw + (gap if txt else 0) + aw <= 1010: break
+    x = (W - lw - (gap + aw if txt else 0)) / 2
+    d.rounded_rectangle((x, y, x + lw, y + h), radius=16, fill=(205, 32, 44, 255), outline=(255, 255, 255, 255), width=4)
+    d.text((x + 24, y + (h - 44) / 2 - 4), lt, font=lf, fill=(255, 255, 255))
+    if txt:
+        x2 = x + lw + gap
+        d.rounded_rectangle((x2, y + 4, x2 + aw, y + h - 4), radius=(h - 8) // 2, fill=(12, 14, 24, 220))
+        rich(lay, d, x2 + 22, y + (h - af.size) / 2 - 3, txt, af, (255, 255, 255))
+    return lay
+
 # ---------- tidslinje ----------
 REVEAL = False   # Martin 19. nov: svaret skal ALDRI vises – folk skal diskutere det i kommentarfeltet
 def timeline(p):
@@ -267,7 +288,7 @@ def ring(d, cx, cy, r, frac, num, col=YEL):
 
 class Reel:
     def __init__(self, p, theme=None):
-        set_theme(theme or p.get("theme") or pts_theme.theme_for_id(p["id"]))
+        set_theme(theme or p.get("theme") or pts_theme.theme_for_id(p.get("level") or p["id"]))
         self.p = p; self.tl = timeline(p); self.bg = T.background()
         s = p["series"]
         if s == "F":
@@ -279,6 +300,7 @@ class Reel:
         top = self.bg.copy(); T.hook(top, p["hook"])
         diff = np.abs(np.asarray(top, np.int16) - np.asarray(self.bg, np.int16)).sum(axis=2)
         self.hook_layer = top.convert("RGBA"); self.hook_layer.putalpha(Image.fromarray(np.clip(diff * 6, 0, 255).astype(np.uint8)))
+        self.badges = badges(p)
         self.animated = T.name == "brass"
         self.static = None if self.animated else Image.alpha_composite(self.bg.convert("RGBA"), self.hook_layer).convert("RGB")
 
@@ -311,6 +333,7 @@ class Reel:
         else:
             img.paste(card, (px, py), card)
         if T.name == "desk": T.tape(img)
+        if self.badges is not None: img.paste(self.badges, (0, 0), self.badges)
         # nedtelling / status
         c0, c1 = tl["count"]; total = c1 - c0
         if (tl["mem"] and t < c0) or t < c0: T.timer(img, total, total)
@@ -320,7 +343,7 @@ class Reel:
         # bunntekst
         d = ImageDraw.Draw(img)
         bt = "Comment your answer 👇" if t < tl["reveal"] else "Follow for a daily puzzle 🧠"
-        if not REVEAL and t >= c1: bt = "What's your answer? 👇"
+        if not REVEAL and t >= c1: bt = "Answer in my next video 👀" if p.get("level") else "What's your answer? 👇"
         if tl["mem"] and t < tl["mem"][1]: bt = "Then answer the question 👇"
         rich_c(img, d, W / 2, 1665, bt, T.font_text(48), T.bottom)
         return img
@@ -415,10 +438,11 @@ def render(p, out):
                     "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "160k", "-shortest", part], check=True)
     os.replace(part, out)
 
-def theme_of(p): return p.get("theme") or pts_theme.theme_for_id(p["id"])
+def theme_of(p): return p.get("theme") or pts_theme.theme_for_id(p.get("level") or p["id"])
 
 def load(bank):
-    return {json.loads(l)["id"]: json.loads(l) for l in open(bank, encoding="utf-8") if l.strip()}
+    import levels
+    return levels.annotate({json.loads(l)["id"]: json.loads(l) for l in open(bank, encoding="utf-8") if l.strip()})
 
 if __name__ == "__main__":
     if sys.argv[1] == "--check":   # pts_reel.py --check BANK ID OUT.png  -> svarkortet (vises ikke i videoen)

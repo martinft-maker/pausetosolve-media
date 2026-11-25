@@ -141,9 +141,13 @@ def gen_F():
     return dict(series="F", grid=grid, cols=4, target=target, answer=n, prompt=f"How many {target} did you see?",
                 explain_top=f"There were {n} {target}", verdict=f"Answer: {n}", cap_q=f"How many {target} were in the grid?")
 
-def build(start=1, count=100, used=None):
+# Martin 25. nov: gåter (D), matte (A) og tallrekker (C) kuttes – de fikk 0–1 av 6–7 treff.
+# Ny fordeling per 100: B finn emojien 40, F hukommelse 35, E synsbedrag 25.
+PLAN_V2 = ["B"] * 40 + ["F"] * 35 + ["E"] * 25
+def build(start=1, count=100, used=None, plan=None):
     """used: tellere per serie fra eksisterende bank (for --append)."""
-    plan = ["A"] * 25 + ["B"] * 20 + ["C"] * 20 + ["D"] * 15 + ["E"] * 8 + ["F"] * 12
+    plan = plan or (["A"] * 25 + ["B"] * 20 + ["C"] * 20 + ["D"] * 15 + ["E"] * 8 + ["F"] * 12)
+    plan = (plan * (count // len(plan) + 1))[:max(count, len(plan))]
     # flett: aldri samme serie to ganger på rad
     order, pool = [], plan[:]
     while pool:
@@ -166,7 +170,7 @@ if __name__ == "__main__" and sys.argv[1] == "--append":
     bank, n = sys.argv[2], int(sys.argv[3]); R.seed(int(sys.argv[4]) if len(sys.argv) > 4 else 7)
     old = [json.loads(l) for l in open(bank, encoding="utf-8") if l.strip()]
     used = {k: sum(1 for p in old if p["series"] == k) for k in "ABCDEF"}
-    ps = build(int(old[-1]["id"]) + 1, n, used)
+    ps = build(int(old[-1]["id"]) + 1, n, used, PLAN_V2)
     with open(bank, "a", encoding="utf-8") as f:
         for p in ps: f.write(json.dumps(p, ensure_ascii=False) + "\n")
     from collections import Counter; print(len(ps), ps[0]["id"], "-", ps[-1]["id"], Counter(p["series"] for p in ps))
